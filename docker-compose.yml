@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: ./frontend.Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - grocery-web-network
+
+  backend:
+    build:
+      context: .
+      dockerfile: ./backend.Dockerfile
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - db
+    entrypoint: ["/bin/sh", "-c", "/app/wait-for-it.sh db:3306 && python server.py"]
+    environment:
+      - DB_HOST=db
+      - DB_USER=root
+      - DB_PASSWORD=Test@123
+      - DB_NAME=grocery_store
+      - MYSQL_ALLOW_EMPTY_PASSWORD=yes
+    restart: on-failure
+    networks:
+      - grocery-web-network
+
+  db:
+    image: mysql:8.0
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./database:/docker-entrypoint-initdb.d
+    environment:
+      - MYSQL_ROOT_PASSWORD=Test@123
+      - MYSQL_DATABASE=grocery_store
+      - MYSQL_ROOT_HOST=%
+    command: --default-authentication-plugin=mysql_native_password
+    restart: unless-stopped
+    networks:
+      - grocery-web-network
+
+networks:
+  grocery-web-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
+    driver: local
