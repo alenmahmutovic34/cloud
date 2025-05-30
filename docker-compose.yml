@@ -27,7 +27,7 @@ services:
     environment:
       - DB_HOST=db
       - DB_USER=root
-      - DB_PASSWORD=Test@123
+      - DB_PASSWORD=Test123456
       - DB_NAME=grocery_store
       - MYSQL_ALLOW_EMPTY_PASSWORD=yes
     restart: on-failure
@@ -42,7 +42,7 @@ services:
       - mysql-data:/var/lib/mysql
       - ./database:/docker-entrypoint-initdb.d
     environment:
-      - MYSQL_ROOT_PASSWORD=Test@123
+      - MYSQL_ROOT_PASSWORD=Test123456
       - MYSQL_DATABASE=grocery_store
       - MYSQL_ROOT_HOST=%
     command: --default-authentication-plugin=mysql_native_password
