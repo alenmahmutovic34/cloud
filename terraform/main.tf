@@ -66,7 +66,7 @@ resource "aws_subnet" "public" {
   }
 }
 
-# Private Subnets (za RDS)
+# Private Subnets (za RDS MySQL)
 resource "aws_subnet" "private" {
   count             = 2
   vpc_id            = aws_vpc.main.id
@@ -111,10 +111,10 @@ resource "aws_security_group" "app" {
     cidr_blocks = ["0.0.0.0/0"]
   }
   
-  # Backend port
+  # Flask backend port
   ingress {
-    from_port       = 3000
-    to_port         = 3000
+    from_port       = 5000
+    to_port         = 5000
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
   }
@@ -155,14 +155,14 @@ resource "aws_security_group" "alb" {
   }
 }
 
-# Security Group za RDS
+# Security Group za RDS MySQL
 resource "aws_security_group" "rds" {
   name   = "rds-sg"
   vpc_id = aws_vpc.main.id
   
   ingress {
-    from_port       = 5432
-    to_port         = 5432
+    from_port       = 3306
+    to_port         = 3306
     protocol        = "tcp"
     security_groups = [aws_security_group.app.id]
   }
@@ -194,7 +194,6 @@ resource "aws_ebs_volume" "app" {
 }
 
 # Full-Stack EC2 Instances
-# Full-Stack EC2 Instances
 resource "aws_instance" "app" {
   count                  = 2
   ami                    = data.aws_ami.amazon_linux.id
@@ -204,10 +203,10 @@ resource "aws_instance" "app" {
   
   user_data = base64encode(templatefile("${path.module}/fullstack_user_data.sh", {
     git_repo_url = var.git_repo_url
-    db_host      = split(":", aws_db_instance.postgres.endpoint)[0]
-    db_name      = aws_db_instance.postgres.db_name
-    db_username  = aws_db_instance.postgres.username
-    db_password  = aws_db_instance.postgres.password
+    db_host      = split(":", aws_db_instance.mysql.endpoint)[0]
+    db_name      = aws_db_instance.mysql.db_name
+    db_username  = aws_db_instance.mysql.username
+    db_password  = aws_db_instance.mysql.password
   }))
   
   tags = {
@@ -233,21 +232,21 @@ resource "aws_db_subnet_group" "main" {
   }
 }
 
-# RDS Instance
-resource "aws_db_instance" "postgres" {
-  identifier = "main-postgres"
+# RDS MySQL Instance
+resource "aws_db_instance" "mysql" {
+  identifier = "main-mysql"
   
-  engine         = "postgres"
-  engine_version = "13.21"
+  engine         = "mysql"
+  engine_version = "8.0"
   instance_class = "db.t3.micro"
   
   allocated_storage = 20
   storage_type      = "gp3"
   storage_encrypted = true
   
-  db_name  = "appdb"
-  username = "appuser"
-  password = "changeme123!"
+  db_name  = "grocery_store"
+  username = "root"
+  password = "Test123456"
   
   vpc_security_group_ids = [aws_security_group.rds.id]
   db_subnet_group_name   = aws_db_subnet_group.main.name
@@ -255,7 +254,7 @@ resource "aws_db_instance" "postgres" {
   skip_final_snapshot = true
   
   tags = {
-    Name = "main-postgres"
+    Name = "main-mysql"
   }
 }
 
@@ -272,10 +271,10 @@ resource "aws_lb" "main" {
   }
 }
 
-# Target Group za Backend
+# Target Group za Flask Backend
 resource "aws_lb_target_group" "backend" {
   name     = "backend-tg"
-  port     = 3000
+  port     = 5000
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
   
@@ -287,16 +286,15 @@ resource "aws_lb_target_group" "backend" {
     interval            = 30
     path                = "/health"
     matcher             = "200"
-    port                = "3000"
+    port                = "5000"
   }
   
   tags = {
-    Name = "iso-tg"
+    Name = "backend-tg"
   }
 }
 
-
-#Target Group za Frontend
+# Target Group za Frontend
 resource "aws_lb_target_group" "frontend" {
   name     = "frontend-tg"
   port     = 80  
@@ -324,7 +322,7 @@ resource "aws_lb_target_group_attachment" "backend" {
   count            = 2
   target_group_arn = aws_lb_target_group.backend.arn
   target_id        = aws_instance.app[count.index].id
-  port             = 3000
+  port             = 5000
 }
 
 # Target Group Attachments - Frontend
@@ -334,7 +332,6 @@ resource "aws_lb_target_group_attachment" "frontend" {
   target_id        = aws_instance.app[count.index].id
   port             = 80
 }
-
 
 # ALB Listener
 resource "aws_lb_listener" "main" {
@@ -365,26 +362,15 @@ resource "aws_lb_listener_rule" "api" {
   }
 }
 
-
 # Outputs
 output "alb_dns_name" {
   value = aws_lb.main.dns_name
 }
 
 output "rds_endpoint" {
-  value = aws_db_instance.postgres.endpoint
+  value = aws_db_instance.mysql.endpoint
 }
 
 output "app_instance_ips" {
   value = aws_instance.app[*].public_ip
 }
-
-
-
-
-
-
-
-
-
-
