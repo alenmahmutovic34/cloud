@@ -1,6 +1,36 @@
-# Data source for availability zones
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = "us-east-1"
+}
+
+# Variables
+variable "git_repo_url" {
+  description = "Git repository URL"
+  type        = string
+  default     = "https://github.com/cloud/cloud.git"
+}
+
+# Data sources
 data "aws_availability_zones" "available" {
   state = "available"
+}
+
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+  
+  filter {
+    name   = "name"
+    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+  }
 }
 
 # VPC
@@ -8,240 +38,271 @@ resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
   enable_dns_support   = true
-
+  
   tags = {
-    Name = "${var.project_name}-vpc"
+    Name = "main-vpc"
   }
 }
 
 # Internet Gateway
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
-
+  
   tags = {
-    Name = "${var.project_name}-igw"
+    Name = "main-igw"
   }
 }
 
 # Public Subnets
-resource "aws_subnet" "public_1" {
+resource "aws_subnet" "public" {
+  count                   = 2
   vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.1.0/24"
-  availability_zone       = data.aws_availability_zones.available.names[0]
+  cidr_block              = "10.0.${count.index + 1}.0/24"
+  availability_zone       = data.aws_availability_zones.available.names[count.index]
   map_public_ip_on_launch = true
-
+  
   tags = {
-    Name = "${var.project_name}-public-subnet-1"
+    Name = "public-subnet-${count.index + 1}"
   }
 }
 
-resource "aws_subnet" "public_2" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.2.0/24"
-  availability_zone       = data.aws_availability_zones.available.names[1]
-  map_public_ip_on_launch = true
-
-  tags = {
-    Name = "${var.project_name}-public-subnet-2"
-  }
-}
-
-# Private Subnets for RDS
-resource "aws_subnet" "private_1" {
+# Private Subnets (za RDS)
+resource "aws_subnet" "private" {
+  count             = 2
   vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.3.0/24"
-  availability_zone = data.aws_availability_zones.available.names[0]
-
+  cidr_block        = "10.0.${count.index + 10}.0/24"
+  availability_zone = data.aws_availability_zones.available.names[count.index]
+  
   tags = {
-    Name = "${var.project_name}-private-subnet-1"
+    Name = "private-subnet-${count.index + 1}"
   }
 }
 
-resource "aws_subnet" "private_2" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.4.0/24"
-  availability_zone = data.aws_availability_zones.available.names[1]
-
-  tags = {
-    Name = "${var.project_name}-private-subnet-2"
-  }
-}
-
-# Route Table for Public Subnets
+# Route Table za public subnets
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
-
+  
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.main.id
   }
-
+  
   tags = {
-    Name = "${var.project_name}-public-rt"
+    Name = "public-rt"
   }
 }
 
-# Route Table Associations
-resource "aws_route_table_association" "public_1" {
-  subnet_id      = aws_subnet.public_1.id
+resource "aws_route_table_association" "public" {
+  count          = 2
+  subnet_id      = aws_subnet.public[count.index].id
   route_table_id = aws_route_table.public.id
 }
 
-resource "aws_route_table_association" "public_2" {
-  subnet_id      = aws_subnet.public_2.id
-  route_table_id = aws_route_table.public.id
-}
-
-# Security Group for ALB
-resource "aws_security_group" "alb" {
-  name_prefix = "${var.project_name}-alb-"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name = "${var.project_name}-alb-sg"
-  }
-}
-
-# Security Group for App Instances
+# Security Group za EC2 instances
 resource "aws_security_group" "app" {
-  name_prefix = "${var.project_name}-app-"
-  vpc_id      = aws_vpc.main.id
-
-  # Allow HTTP from ALB
-  ingress {
-    from_port       = 80
-    to_port         = 80
-    protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
-  }
-
-  ingress {
-    from_port       = 8085
-    to_port         = 8085
-    protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
-  }
-
-  # SSH access
+  name   = "app-sg"
+  vpc_id = aws_vpc.main.id
+  
+  # SSH
   ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
+  
+  # Backend port
+  ingress {
+    from_port       = 3000
+    to_port         = 3000
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+  
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
+  
   tags = {
-    Name = "${var.project_name}-app-sg"
+    Name = "app-sg"
   }
 }
 
-# Get latest Amazon Linux 2 AMI
-data "aws_ami" "amazon_linux" {
-  most_recent = true
-  owners      = ["amazon"]
-
-  filter {
-    name   = "name"
-    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+# Security Group za ALB
+resource "aws_security_group" "alb" {
+  name   = "alb-sg"
+  vpc_id = aws_vpc.main.id
+  
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  
+  tags = {
+    Name = "alb-sg"
   }
 }
 
-# Launch Template for Combined App
-resource "aws_launch_template" "app" {
-  name_prefix   = "${var.project_name}-app-"
-  image_id      = data.aws_ami.amazon_linux.id
-  instance_type = var.instance_type
-  key_name      = var.key_name
+# Security Group za RDS
+resource "aws_security_group" "rds" {
+  name   = "rds-sg"
+  vpc_id = aws_vpc.main.id
+  
+  ingress {
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.app.id]
+  }
+  
+  tags = {
+    Name = "rds-sg"
+  }
+}
 
+resource "aws_security_group_rule" "app_nginx" {
+  type              = "ingress"
+  from_port         = 80
+  to_port           = 80
+  protocol          = "tcp"
+  security_group_id = aws_security_group.app.id
+  source_security_group_id = aws_security_group.alb.id
+}
+
+# EBS Volumes
+resource "aws_ebs_volume" "app" {
+  count             = 2
+  availability_zone = data.aws_availability_zones.available.names[count.index]
+  size              = 8
+  type              = "gp3"
+  
+  tags = {
+    Name = "app-ebs-${count.index + 1}"
+  }
+}
+
+# Full-Stack EC2 Instances
+# Full-Stack EC2 Instances
+resource "aws_instance" "app" {
+  count                  = 2
+  ami                    = data.aws_ami.amazon_linux.id
+  instance_type          = "t2.micro"
+  subnet_id             = aws_subnet.public[count.index].id
   vpc_security_group_ids = [aws_security_group.app.id]
-
-  user_data = base64encode(templatefile("${path.module}/user-data-combined.sh", {
+  
+  user_data = base64encode(templatefile("${path.module}/fullstack_user_data.sh", {
     git_repo_url = var.git_repo_url
-    db_host      = aws_db_instance.mysql.endpoint
-    db_name      = var.db_name
-    db_username  = var.db_username
-    db_password  = var.db_password
-    alb_dns_name = aws_lb.main.dns_name
+    db_host      = split(":", aws_db_instance.postgres.endpoint)[0]
+    db_name      = aws_db_instance.postgres.db_name
+    db_username  = aws_db_instance.postgres.username
+    db_password  = aws_db_instance.postgres.password
   }))
-
-  tag_specifications {
-    resource_type = "instance"
-    tags = {
-      Name = "${var.project_name}-app"
-    }
+  
+  tags = {
+    Name = "fullstack-instance-${count.index + 1}"
   }
 }
 
-# Auto Scaling Group for Combined Instances
-resource "aws_autoscaling_group" "app" {
-  name                = "${var.project_name}-app-asg"
-  vpc_zone_identifier = [aws_subnet.public_1.id, aws_subnet.public_2.id]
-  target_group_arns   = [aws_lb_target_group.frontend.arn, aws_lb_target_group.backend.arn]
-  health_check_type   = "ELB"
-  min_size            = 2
-  max_size            = 2
-  desired_capacity    = 2
+# EBS Attachments
+resource "aws_volume_attachment" "app" {
+  count       = 2
+  device_name = "/dev/sdf"
+  volume_id   = aws_ebs_volume.app[count.index].id
+  instance_id = aws_instance.app[count.index].id
+}
 
-  launch_template {
-    id      = aws_launch_template.app.id
-    version = "$Latest"
+# RDS Subnet Group
+resource "aws_db_subnet_group" "main" {
+  name       = "main-db-subnet-group"
+  subnet_ids = aws_subnet.private[*].id
+  
+  tags = {
+    Name = "main-db-subnet-group"
   }
+}
 
-  tag {
-    key                 = "Name"
-    value               = "${var.project_name}-app"
-    propagate_at_launch = true
+# RDS Instance
+resource "aws_db_instance" "postgres" {
+  identifier = "main-postgres"
+  
+  engine         = "postgres"
+  engine_version = "13.21"
+  instance_class = "db.t3.micro"
+  
+  allocated_storage = 20
+  storage_type      = "gp3"
+  storage_encrypted = true
+  
+  db_name  = "appdb"
+  username = "appuser"
+  password = "changeme123!"
+  
+  vpc_security_group_ids = [aws_security_group.rds.id]
+  db_subnet_group_name   = aws_db_subnet_group.main.name
+  
+  skip_final_snapshot = true
+  
+  tags = {
+    Name = "main-postgres"
   }
 }
 
 # Application Load Balancer
 resource "aws_lb" "main" {
-  name               = "${var.project_name}-alb"
+  name               = "main-alb"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
-  subnets            = [aws_subnet.public_1.id, aws_subnet.public_2.id]
-
+  subnets            = aws_subnet.public[*].id
+  
   tags = {
-    Name = "${var.project_name}-alb"
+    Name = "main-alb"
   }
 }
 
-# Target Group for Frontend
-resource "aws_lb_target_group" "frontend" {
-  name     = "${var.project_name}-frontend-tg"
-  port     = 80
+# Target Group za Backend
+resource "aws_lb_target_group" "backend" {
+  name     = "backend-tg"
+  port     = 3000
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
+  
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 5
+    interval            = 30
+    path                = "/health"
+    matcher             = "200"
+    port                = "3000"
+  }
+  
+  tags = {
+    Name = "iso-tg"
+  }
+}
 
+
+#Target Group za Frontend
+resource "aws_lb_target_group" "frontend" {
+  name     = "frontend-tg"
+  port     = 80  
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
+  
   health_check {
     enabled             = true
     healthy_threshold   = 2
@@ -250,65 +311,80 @@ resource "aws_lb_target_group" "frontend" {
     interval            = 30
     path                = "/"
     matcher             = "200"
-    port                = "traffic-port"
-    protocol            = "HTTP"
+    port                = "80"
   }
-
+  
   tags = {
-    Name = "${var.project_name}-frontend-tg"
+    Name = "frontend-tg"
   }
 }
 
-# Target Group for Backend
-resource "aws_lb_target_group" "backend" {
-  name     = "${var.project_name}-backend-tg"
-  port     = 8085
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.main.id
-
-  health_check {
-    enabled             = true
-    healthy_threshold   = 2
-    unhealthy_threshold = 2
-    timeout             = 5
-    interval            = 30
-    path                = "/api/health"
-    matcher             = "200,404"
-    port                = "traffic-port"
-    protocol            = "HTTP"
-  }
-
-  tags = {
-    Name = "${var.project_name}-backend-tg"
-  }
+# Target Group Attachments - Backend
+resource "aws_lb_target_group_attachment" "backend" {
+  count            = 2
+  target_group_arn = aws_lb_target_group.backend.arn
+  target_id        = aws_instance.app[count.index].id
+  port             = 3000
 }
+
+# Target Group Attachments - Frontend
+resource "aws_lb_target_group_attachment" "frontend" {
+  count            = 2
+  target_group_arn = aws_lb_target_group.frontend.arn
+  target_id        = aws_instance.app[count.index].id
+  port             = 80
+}
+
 
 # ALB Listener
 resource "aws_lb_listener" "main" {
   load_balancer_arn = aws_lb.main.arn
   port              = "80"
   protocol          = "HTTP"
-
+  
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.frontend.arn
   }
 }
 
-# ALB Listener Rule for API
+# Listener Rule za API traffic
 resource "aws_lb_listener_rule" "api" {
   listener_arn = aws_lb_listener.main.arn
   priority     = 100
-
+  
   action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.backend.arn
   }
-
+  
   condition {
     path_pattern {
-      values = ["/api/*"]
+      values = ["/api/*", "/health"]
     }
   }
 }
+
+
+# Outputs
+output "alb_dns_name" {
+  value = aws_lb.main.dns_name
+}
+
+output "rds_endpoint" {
+  value = aws_db_instance.postgres.endpoint
+}
+
+output "app_instance_ips" {
+  value = aws_instance.app[*].public_ip
+}
+
+
+
+
+
+
+
+
+
 
