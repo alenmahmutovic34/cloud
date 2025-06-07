@@ -13,7 +13,7 @@ RUN chmod +x wait-for-it.sh
 
 ENV DB_HOST=db
 ENV DB_USER=root
-ENV DB_PASSWORD=Test@123
+ENV DB_PASSWORD=Test123456
 ENV DB_NAME=grocery_store
 
 EXPOSE 5000

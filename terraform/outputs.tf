@@ -1,14 +1,34 @@
 output "alb_dns_name" {
-  description = "DNS name of the load balancer"
+  description = "DNS endpoint ALB-a"
   value       = aws_lb.main.dns_name
 }
 
-output "rds_endpoint" {
-  description = "RDS instance endpoint"
-  value       = aws_db_instance.mysql.endpoint
+output "alb_zone_id" {
+  description = "Zone ID ALB-a"
+  value       = aws_lb.main.zone_id
 }
 
-output "application_url" {
-  description = "Application URL"
+output "alb_url" {
+  description = "Puna URL aplikacije"
   value       = "http://${aws_lb.main.dns_name}"
+}
+
+output "ec2_public_ip" {
+  description = "Javna IP adresa EC2 instance"
+  value       = aws_instance.app.public_ip
+}
+
+output "ec2_private_ip" {
+  description = "Privatna IP adresa EC2 instance"
+  value       = aws_instance.app.private_ip
+}
+
+output "frontend_url" {
+  description = "URL frontend aplikacije"
+  value       = "http://${aws_lb.main.dns_name}/"
+}
+
+output "backend_api_url" {
+  description = "URL backend API-ja"
+  value       = "http://${aws_lb.main.dns_name}/api/"
 }

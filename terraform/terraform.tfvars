@@ -1,17 +1,14 @@
-# AWS Configuration
+# AWS Region
 aws_region = "us-east-1"
 
-# Project Configuration
-project_name = "fullstack-app"
+# Ime projekta
+project_name = "grocery-store"
 
-# Git Repository 
+# EC2 Instance Type
+instance_type = "t3.medium"
+
+# Key Pair ime (MORAŠ KREIRATI PRIJE POKRETANJA!)
+key_pair_name = "grocery-store-key"
+
+# Git Repository URL
 git_repo_url = "https://github.com/alenmahmutovic34/cloud.git"
-
-# Database Configuration
-db_name     = "grocery_store"
-db_username = "root"
-db_password = "Test123456"  # Change this to a secure password
-
-# EC2 Configuration
-instance_type = "t3.micro"
-key_name     = "alen-app"  # Replace with your EC2 key pair names

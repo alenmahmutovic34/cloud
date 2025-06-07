@@ -1,6 +1,36 @@
-# Data source for availability zones
+# Provider konfiguracija
+terraform {
+  required_version = ">= 1.0"
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = var.aws_region
+}
+
+# Data sources
 data "aws_availability_zones" "available" {
   state = "available"
+}
+
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
 }
 
 # VPC
@@ -24,50 +54,31 @@ resource "aws_internet_gateway" "main" {
 }
 
 # Public Subnets
-resource "aws_subnet" "public_1" {
+resource "aws_subnet" "public" {
+  count = 2
+
   vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.1.0/24"
-  availability_zone       = data.aws_availability_zones.available.names[0]
+  cidr_block              = "10.0.${count.index + 1}.0/24"
+  availability_zone       = data.aws_availability_zones.available.names[count.index]
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "${var.project_name}-public-subnet-1"
+    Name = "${var.project_name}-public-subnet-${count.index + 1}"
   }
 }
 
-resource "aws_subnet" "public_2" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.2.0/24"
-  availability_zone       = data.aws_availability_zones.available.names[1]
-  map_public_ip_on_launch = true
-
-  tags = {
-    Name = "${var.project_name}-public-subnet-2"
-  }
-}
-
-# Private Subnets for RDS
-resource "aws_subnet" "private_1" {
+# Private Subnet za bazu podataka
+resource "aws_subnet" "private" {
   vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.3.0/24"
+  cidr_block        = "10.0.10.0/24"
   availability_zone = data.aws_availability_zones.available.names[0]
 
   tags = {
-    Name = "${var.project_name}-private-subnet-1"
+    Name = "${var.project_name}-private-subnet"
   }
 }
 
-resource "aws_subnet" "private_2" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.4.0/24"
-  availability_zone = data.aws_availability_zones.available.names[1]
-
-  tags = {
-    Name = "${var.project_name}-private-subnet-2"
-  }
-}
-
-# Route Table for Public Subnets
+# Route Table za javne subnets
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
@@ -81,23 +92,21 @@ resource "aws_route_table" "public" {
   }
 }
 
-# Route Table Associations
-resource "aws_route_table_association" "public_1" {
-  subnet_id      = aws_subnet.public_1.id
+# Povezivanje javnih subnets sa route table
+resource "aws_route_table_association" "public" {
+  count = length(aws_subnet.public)
+
+  subnet_id      = aws_subnet.public[count.index].id
   route_table_id = aws_route_table.public.id
 }
 
-resource "aws_route_table_association" "public_2" {
-  subnet_id      = aws_subnet.public_2.id
-  route_table_id = aws_route_table.public.id
-}
-
-# Security Group for ALB
+# Security Group za ALB
 resource "aws_security_group" "alb" {
-  name_prefix = "${var.project_name}-alb-"
+  name_prefix = "${var.project_name}-alb"
   vpc_id      = aws_vpc.main.id
 
   ingress {
+    description = "HTTP"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
@@ -105,6 +114,7 @@ resource "aws_security_group" "alb" {
   }
 
   ingress {
+    description = "HTTPS"
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
@@ -123,28 +133,32 @@ resource "aws_security_group" "alb" {
   }
 }
 
-# Security Group for App Instances
-resource "aws_security_group" "app" {
-  name_prefix = "${var.project_name}-app-"
+# Security Group za EC2
+resource "aws_security_group" "ec2" {
+  name_prefix = "${var.project_name}-ec2"
   vpc_id      = aws_vpc.main.id
 
-  # Allow HTTP from ALB
+  # HTTP za frontend
   ingress {
-    from_port       = 80
-    to_port         = 80
+    description     = "Frontend HTTP"
+    from_port       = 8080
+    to_port         = 8080
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
   }
 
+  # Backend API
   ingress {
-    from_port       = 8085
-    to_port         = 8085
+    description     = "Backend API"
+    from_port       = 5000
+    to_port         = 5000
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
   }
 
-  # SSH access
+  # SSH
   ingress {
+    description = "SSH"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
@@ -159,67 +173,46 @@ resource "aws_security_group" "app" {
   }
 
   tags = {
-    Name = "${var.project_name}-app-sg"
+    Name = "${var.project_name}-ec2-sg"
   }
 }
 
-# Get latest Amazon Linux 2 AMI
-data "aws_ami" "amazon_linux" {
-  most_recent = true
-  owners      = ["amazon"]
+# EBS Volume
+resource "aws_ebs_volume" "mysql_data" {
+  availability_zone = data.aws_availability_zones.available.names[0]
+  size              = 20
+  type              = "gp3"
+  encrypted         = true
 
-  filter {
-    name   = "name"
-    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+  tags = {
+    Name = "${var.project_name}-mysql-data"
   }
 }
 
-# Launch Template for Combined App
-resource "aws_launch_template" "app" {
-  name_prefix   = "${var.project_name}-app-"
-  image_id      = data.aws_ami.amazon_linux.id
-  instance_type = var.instance_type
-  key_name      = var.key_name
+# EC2 Instance
+resource "aws_instance" "app" {
+  ami                    = data.aws_ami.amazon_linux.id
+  instance_type          = var.instance_type
+  key_name               = var.key_pair_name
+  vpc_security_group_ids = [aws_security_group.ec2.id]
+  subnet_id              = aws_subnet.public[0].id
+  availability_zone      = data.aws_availability_zones.available.names[0]
 
-  vpc_security_group_ids = [aws_security_group.app.id]
-
-  user_data = base64encode(templatefile("${path.module}/user-data-combined.sh", {
+  user_data = base64encode(templatefile("${path.module}/user_data.sh", {
     git_repo_url = var.git_repo_url
-    db_host      = aws_db_instance.mysql.endpoint
-    db_name      = var.db_name
-    db_username  = var.db_username
-    db_password  = var.db_password
-    alb_dns_name = aws_lb.main.dns_name
+    ebs_device   = "/dev/xvdf"
   }))
 
-  tag_specifications {
-    resource_type = "instance"
-    tags = {
-      Name = "${var.project_name}-app"
-    }
+  tags = {
+    Name = "${var.project_name}-app-server"
   }
 }
 
-# Auto Scaling Group for Combined Instances
-resource "aws_autoscaling_group" "app" {
-  name                = "${var.project_name}-app-asg"
-  vpc_zone_identifier = [aws_subnet.public_1.id, aws_subnet.public_2.id]
-  target_group_arns   = [aws_lb_target_group.frontend.arn, aws_lb_target_group.backend.arn]
-  health_check_type   = "ELB"
-  min_size            = 2
-  max_size            = 2
-  desired_capacity    = 2
-
-  launch_template {
-    id      = aws_launch_template.app.id
-    version = "$Latest"
-  }
-
-  tag {
-    key                 = "Name"
-    value               = "${var.project_name}-app"
-    propagate_at_launch = true
-  }
+# Attach EBS Volume to EC2
+resource "aws_volume_attachment" "mysql_data" {
+  device_name = "/dev/xvdf"
+  volume_id   = aws_ebs_volume.mysql_data.id
+  instance_id = aws_instance.app.id
 }
 
 # Application Load Balancer
@@ -228,30 +221,32 @@ resource "aws_lb" "main" {
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
-  subnets            = [aws_subnet.public_1.id, aws_subnet.public_2.id]
+  subnets            = aws_subnet.public[*].id
+
+  enable_deletion_protection = false
 
   tags = {
     Name = "${var.project_name}-alb"
   }
 }
 
-# Target Group for Frontend
+# Target Group za Frontend
 resource "aws_lb_target_group" "frontend" {
   name     = "${var.project_name}-frontend-tg"
-  port     = 80
+  port     = 8080
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
 
   health_check {
     enabled             = true
     healthy_threshold   = 2
-    unhealthy_threshold = 2
-    timeout             = 5
     interval            = 30
-    path                = "/"
     matcher             = "200"
+    path                = "/"
     port                = "traffic-port"
     protocol            = "HTTP"
+    timeout             = 5
+    unhealthy_threshold = 2
   }
 
   tags = {
@@ -259,28 +254,41 @@ resource "aws_lb_target_group" "frontend" {
   }
 }
 
-# Target Group for Backend
+# Target Group za Backend
 resource "aws_lb_target_group" "backend" {
   name     = "${var.project_name}-backend-tg"
-  port     = 8085
+  port     = 5000
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
 
   health_check {
     enabled             = true
     healthy_threshold   = 2
-    unhealthy_threshold = 2
-    timeout             = 5
     interval            = 30
+    matcher             = "200"
     path                = "/api/health"
-    matcher             = "200,404"
     port                = "traffic-port"
     protocol            = "HTTP"
+    timeout             = 5
+    unhealthy_threshold = 2
   }
 
   tags = {
     Name = "${var.project_name}-backend-tg"
   }
+}
+
+# Registracija EC2 instance u target groups
+resource "aws_lb_target_group_attachment" "frontend" {
+  target_group_arn = aws_lb_target_group.frontend.arn
+  target_id        = aws_instance.app.id
+  port             = 8080
+}
+
+resource "aws_lb_target_group_attachment" "backend" {
+  target_group_arn = aws_lb_target_group.backend.arn
+  target_id        = aws_instance.app.id
+  port             = 5000
 }
 
 # ALB Listener
@@ -289,14 +297,15 @@ resource "aws_lb_listener" "main" {
   port              = "80"
   protocol          = "HTTP"
 
+  # Default action - proslijedi na frontend
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.frontend.arn
   }
 }
 
-# ALB Listener Rule for API
-resource "aws_lb_listener_rule" "api" {
+# ALB Listener Rule za backend API
+resource "aws_lb_listener_rule" "backend_api" {
   listener_arn = aws_lb_listener.main.arn
   priority     = 100
 

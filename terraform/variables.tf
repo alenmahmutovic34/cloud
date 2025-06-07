@@ -5,41 +5,25 @@ variable "aws_region" {
 }
 
 variable "project_name" {
-  description = "Name of the project"
+  description = "Ime projekta"
   type        = string
-  default     = "fullstack-app"
-}
-
-variable "git_repo_url" {
-  description = "Git repository URL"
-  type        = string
-}
-
-variable "db_password" {
-  description = "Database password"
-  type        = string
-  sensitive   = true
-}
-
-variable "db_name" {
-  description = "Database name"
-  type        = string
-  default     = "db"
-}
-
-variable "db_username" {
-  description = "Database username"
-  type        = string
-  default     = "root"
+  default     = "grocery-store"
 }
 
 variable "instance_type" {
   description = "EC2 instance type"
   type        = string
-  default     = "t3.micro"
+  default     = "t3.medium"
 }
 
-variable "key_name" {
-  description = "EC2 Key Pair name"
+variable "key_pair_name" {
+  description = "AWS Key Pair name za SSH pristup"
   type        = string
+  default     = "my-key-pair"
+}
+
+variable "git_repo_url" {
+  description = "URL Git repozitorija"
+  type        = string
+  default     = "https://github.com/alenmahmutovic34/cloud.git"
 }
