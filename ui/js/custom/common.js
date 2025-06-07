@@ -1,10 +1,10 @@
 // Define your api here
-var productListApiUrl = 'http://localhost:8080/api/getProducts';
-var uomListApiUrl = 'http://localhost:8080/api/getUOM';
-var productSaveApiUrl ='http://localhost:8080/api/insertProduct';
-var productDeleteApiUrl = 'http://localhost:8080/api/deleteProduct';
-var orderListApiUrl = 'http://localhost:8080/api/getAllOrders';
-var orderSaveApiUrl = 'http://localhost:8080/api/insertOrder';
+var productListApiUrl = '/api/getProducts';
+var uomListApiUrl = '/api/getUOM';
+var productSaveApiUrl ='/api/insertProduct';
+var productDeleteApiUrl = '/api/deleteProduct';
+var orderListApiUrl = '/api/getAllOrders';
+var orderSaveApiUrl = '/api/insertOrder';
 
 // For product drop in order
 var productsApiUrl = 'https://fakestoreapi.com/products';
