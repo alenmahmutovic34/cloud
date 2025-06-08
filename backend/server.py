@@ -22,7 +22,7 @@ def add_cors_headers(response):
     response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
     return response
 
-@app.route('/getUOM', methods=['GET', 'OPTIONS'])
+@app.route('/api/getUOM', methods=['GET', 'OPTIONS'])
 def get_uom():
     if request.method == 'OPTIONS':
         # Preflight request odgovor
@@ -37,7 +37,7 @@ def get_uom():
     response.headers.add('Access-Control-Allow-Origin', '*')
     return response
 
-@app.route('/getProducts', methods=['GET', 'OPTIONS'])
+@app.route('/api/getProducts', methods=['GET', 'OPTIONS'])
 def get_products():
     if request.method == 'OPTIONS':
         # Preflight request odgovor
@@ -52,7 +52,7 @@ def get_products():
     response.headers.add('Access-Control-Allow-Origin', '*')
     return response
 
-@app.route('/insertProduct', methods=['POST', 'OPTIONS'])
+@app.route('/api/insertProduct', methods=['POST', 'OPTIONS'])
 def insert_product():
     if request.method == 'OPTIONS':
         # Preflight request odgovor
@@ -70,7 +70,7 @@ def insert_product():
     response.headers.add('Access-Control-Allow-Origin', '*')
     return response
 
-@app.route('/getAllOrders', methods=['GET', 'OPTIONS'])
+@app.route('/api/getAllOrders', methods=['GET', 'OPTIONS'])
 def get_all_orders():
     if request.method == 'OPTIONS':
         # Preflight request odgovor
@@ -85,7 +85,7 @@ def get_all_orders():
     response.headers.add('Access-Control-Allow-Origin', '*')
     return response
 
-@app.route('/insertOrder', methods=['POST', 'OPTIONS'])
+@app.route('/api/insertOrder', methods=['POST', 'OPTIONS'])
 def insert_order():
     if request.method == 'OPTIONS':
         # Preflight request odgovor
@@ -103,7 +103,7 @@ def insert_order():
     response.headers.add('Access-Control-Allow-Origin', '*')
     return response
 
-@app.route('/deleteProduct', methods=['POST', 'OPTIONS'])
+@app.route('/api/deleteProduct', methods=['POST', 'OPTIONS'])
 def delete_product():
     if request.method == 'OPTIONS':
         # Preflight request odgovor
